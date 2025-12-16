@@ -41,7 +41,7 @@ export async function improveDrawing(editor: Editor) {
 
   try {
     // Send the image and text to the backend
-    const response = await fetch('http://localhost:8000/api/queue/image', {
+    const response = await fetch('http://localhost:8001/api/queue/image', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -131,7 +131,7 @@ async function waitForImageGeneration(taskId: string): Promise<{ image: string, 
     let timeout: NodeJS.Timeout | null = null;
     
     try {
-      const eventSource = new EventSource(`http://localhost:8000/api/subscribe/${taskId}`)
+      const eventSource = new EventSource(`http://localhost:8001/api/subscribe/${taskId}`)
       
       // Set a timeout in case the SSE connection doesn't close properly
       timeout = setTimeout(() => {

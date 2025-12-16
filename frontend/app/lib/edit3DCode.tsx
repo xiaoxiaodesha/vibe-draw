@@ -71,7 +71,7 @@ export async function edit3DCode(
     const selectionText = getSelectionAsText(editor)
 
     // Send the code, image and text to the backend
-    const response = await fetch('http://localhost:8000/api/queue/edit', {
+    const response = await fetch('http://localhost:8001/api/queue/edit', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -133,7 +133,7 @@ async function waitForCodeEditing(taskId: string): Promise<{ content: string } |
     let timeout: NodeJS.Timeout | null = null;
     
     try {
-      const eventSource = new EventSource(`http://localhost:8000/api/subscribe/${taskId}`)
+      const eventSource = new EventSource(`http://localhost:8001/api/subscribe/${taskId}`)
       
       // Set a timeout in case the SSE connection doesn't close properly
       timeout = setTimeout(() => {

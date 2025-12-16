@@ -53,7 +53,7 @@ export async function vibe3DCode(editor: Editor, shapeId: TLShapeId | null = nul
 
   try {
     if (thinkingMode) {
-      const response = await fetch('http://localhost:8000/api/trellis/task', {
+      const response = await fetch('http://localhost:8001/api/trellis/task', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -117,7 +117,7 @@ export async function vibe3DCode(editor: Editor, shapeId: TLShapeId | null = nul
       return;
     } else {
       // Send the image and text to the backend
-      const response = await fetch('http://localhost:8000/api/queue/3d', {
+      const response = await fetch('http://localhost:8001/api/queue/3d', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -174,7 +174,7 @@ export async function vibe3DCode(editor: Editor, shapeId: TLShapeId | null = nul
 // Function to wait for the code generation to complete via SSE
 async function waitForCodeGeneration(taskId: string): Promise<{ content: string } | null> {
   return new Promise((resolve, reject) => {
-    const eventSource = new EventSource(`http://localhost:8000/api/subscribe/${taskId}`);
+    const eventSource = new EventSource(`http://localhost:8001/api/subscribe/${taskId}`);
     
     eventSource.onmessage = (event) => {
       try {
@@ -257,7 +257,7 @@ async function waitForCodeGeneration(taskId: string): Promise<{ content: string 
 
 async function waitForTaskResult(taskId: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const eventSource = new WebSocket(`http://localhost:8000/api/trellis/task/ws/${taskId}`);
+    const eventSource = new WebSocket(`ws://localhost:8001/api/trellis/task/ws/${taskId}`);
 
     eventSource.onmessage = (event) => {
       const data = JSON.parse((event as MessageEvent).data);
