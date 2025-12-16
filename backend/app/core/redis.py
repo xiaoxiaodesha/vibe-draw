@@ -1,7 +1,7 @@
 from redis import Redis
 from app.core.config import settings
 import json
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import time
 
 class RedisService:
@@ -60,6 +60,17 @@ class RedisService:
         """Store a response in Redis with expiry."""
         key = f"task_response:{task_id}"
         return self.set_value(key, json.dumps(response_data), expiry)
+    
+    def get_response(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """Get a stored response from Redis."""
+        key = f"task_response:{task_id}"
+        value = self.get_value(key)
+        if value is None:
+            return None
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return None
         
     def publish_start_event(self, task_id: str) -> int:
         """Publish a start event for a task."""

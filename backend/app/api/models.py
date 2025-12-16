@@ -82,3 +82,20 @@ class TrellisResponse(BaseModel):
     id: str
     status: str
     # Other fields can be added as needed based on the API response
+
+# 302.ai Trellis API request model
+class Trellis302AIRequest(BaseModel):
+    """Request model for 302.ai Trellis API."""
+    image_url: str = Field(..., description="Image URL in data URL format (data:image/png;base64,...)")
+    ss_guidance_strength: Optional[float] = Field(7.5, description="SS guidance strength")
+    ss_sampling_steps: Optional[int] = Field(12, description="SS sampling steps")
+    slat_guidance_strength: Optional[int] = Field(3, description="SLAT guidance strength")
+    slat_sampling_steps: Optional[int] = Field(12, description="SLAT sampling steps")
+    mesh_simplify: Optional[float] = Field(0.95, description="Mesh simplify factor")
+    texture_size: Optional[int] = Field(1024, description="Texture size")
+
+# 302.ai Trellis API response model
+class Trellis302AIResponse(BaseModel):
+    """Response model from 302.ai Trellis API."""
+    model_mesh: Dict[str, Any] = Field(..., description="Model mesh information with url, content_type, file_size")
+    timings: Dict[str, float] = Field(..., description="Timing information for prepare, generation, export")

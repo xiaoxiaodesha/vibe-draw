@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Request, Body, WebSocket, WebSocke
 from sse_starlette.sse import EventSourceResponse
 from app.api.models import (
     ClaudeResponse, StreamRequest, TaskResponse, TaskStatusResponse, 
-    GeminiImageResponse, TrellisRequest, TrellisResponse
+    GeminiImageResponse, TrellisRequest, TrellisResponse, TrellisInput
 )
 from app.tasks.claude_tasks import ClaudePromptTask, ClaudeEditTask
 from app.tasks.gemini_tasks import GeminiPromptTask, GeminiImageGenerationTask
@@ -22,8 +22,235 @@ from fastapi import BackgroundTasks
 # Create the router
 router = APIRouter()
 
-# Trellis API URL
-TRELLIS_API_URL = "https://api.piapi.ai/api/v1/task"
+# Trellis API URL (deprecated - now using 302.ai)
+# TRELLIS_API_URL = "https://api.piapi.ai/api/v1/task"
+
+def convert_base64_to_data_url(base64_data: str, media_type: str = "image/png") -> str:
+    """Convert base64 string to data URL format.
+    
+    Args:
+        base64_data: Base64 string (may or may not include data URL prefix)
+        media_type: Media type for the data URL (default: image/png)
+        
+    Returns:
+        Data URL string in format: data:image/png;base64,{base64_data}
+    """
+    # #region agent log
+    import time
+    import json
+    log_data = {
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "E",
+        "location": "routes.py:convert_base64_to_data_url:entry",
+        "message": "Converting base64 to data URL",
+        "data": {
+            "input_length": len(base64_data),
+            "has_comma": "," in base64_data,
+            "media_type": media_type
+        },
+        "timestamp": int(time.time() * 1000)
+    }
+    try:
+        with open("d:\\ziliao\\1216\\vibe-draw\\.cursor\\debug.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_data, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+    # #endregion
+    
+    # Remove data URL prefix if present
+    if "," in base64_data:
+        base64_data = base64_data.split(",")[-1]
+    
+    result = f"data:{media_type};base64,{base64_data}"
+    
+    # #region agent log
+    log_data2 = {
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "E",
+        "location": "routes.py:convert_base64_to_data_url:exit",
+        "message": "Data URL conversion complete",
+        "data": {
+            "output_length": len(result),
+            "output_prefix": result[:50]
+        },
+        "timestamp": int(time.time() * 1000)
+    }
+    try:
+        with open("d:\\ziliao\\1216\\vibe-draw\\.cursor\\debug.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_data2, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+    # #endregion
+    
+    return result
+
+async def call_302ai_trellis_api(
+    image_url: str,
+    ss_guidance_strength: float = 7.5,
+    ss_sampling_steps: int = 12,
+    slat_guidance_strength: int = 3,
+    slat_sampling_steps: int = 12,
+    mesh_simplify: float = 0.95,
+    texture_size: int = 1024
+) -> Dict[str, Any]:
+    """Call 302.ai Trellis API for image-to-3D generation.
+    
+    Args:
+        image_url: Image URL in data URL format
+        ss_guidance_strength: SS guidance strength (default: 7.5)
+        ss_sampling_steps: SS sampling steps (default: 12)
+        slat_guidance_strength: SLAT guidance strength (default: 3)
+        slat_sampling_steps: SLAT sampling steps (default: 12)
+        mesh_simplify: Mesh simplify factor (default: 0.95)
+        texture_size: Texture size (default: 1024)
+        
+    Returns:
+        API response as dictionary with model_mesh and timings
+    """
+    # #region agent log
+    import time
+    log_data = {
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "A",
+        "location": "routes.py:call_302ai_trellis_api:entry",
+        "message": "Calling 302.ai Trellis API",
+        "data": {
+            "image_url_length": len(image_url),
+            "image_url_prefix": image_url[:50] if len(image_url) > 50 else image_url,
+            "api_base_url": settings.API_302AI_BASE_URL,
+            "api_endpoint": f"{settings.API_302AI_BASE_URL}/302/submit/trellis",
+            "has_api_key": bool(settings.TRELLIS_API_KEY),
+            "api_key_length": len(settings.TRELLIS_API_KEY) if settings.TRELLIS_API_KEY else 0,
+            "ss_guidance_strength": ss_guidance_strength,
+            "ss_sampling_steps": ss_sampling_steps,
+            "slat_guidance_strength": slat_guidance_strength,
+            "slat_sampling_steps": slat_sampling_steps,
+            "mesh_simplify": mesh_simplify,
+            "texture_size": texture_size
+        },
+        "timestamp": int(time.time() * 1000)
+    }
+    try:
+        with open("d:\\ziliao\\1216\\vibe-draw\\.cursor\\debug.log", "a", encoding="utf-8") as f:
+            import json
+            f.write(json.dumps(log_data, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+    # #endregion
+    
+    if not settings.TRELLIS_API_KEY:
+        raise ValueError("302.ai API key (TRELLIS_API_KEY) not configured")
+    
+    # #region agent log
+    request_body = {
+        "image_url": image_url,
+        "ss_guidance_strength": ss_guidance_strength,
+        "ss_sampling_steps": ss_sampling_steps,
+        "slat_guidance_strength": slat_guidance_strength,
+        "slat_sampling_steps": slat_sampling_steps,
+        "mesh_simplify": mesh_simplify,
+        "texture_size": texture_size
+    }
+    import json as json_module
+    request_body_size = len(json_module.dumps(request_body))
+    log_data2 = {
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "A",
+        "location": "routes.py:call_302ai_trellis_api:before_request",
+        "message": "Before HTTP request",
+        "data": {
+            "request_body_size_bytes": request_body_size,
+            "request_body_size_mb": round(request_body_size / (1024 * 1024), 2),
+            "timeout_seconds": 120.0
+        },
+        "timestamp": int(time.time() * 1000)
+    }
+    try:
+        with open("d:\\ziliao\\1216\\vibe-draw\\.cursor\\debug.log", "a", encoding="utf-8") as f:
+            f.write(json_module.dumps(log_data2, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+    # #endregion
+    
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=30.0)) as client:
+            # #region agent log
+            log_data3 = {
+                "sessionId": "debug-session",
+                "runId": "run1",
+                "hypothesisId": "B",
+                "location": "routes.py:call_302ai_trellis_api:http_request_start",
+                "message": "Starting HTTP POST request",
+                "data": {
+                    "url": f"{settings.API_302AI_BASE_URL}/302/submit/trellis",
+                    "has_auth_header": True
+                },
+                "timestamp": int(time.time() * 1000)
+            }
+            try:
+                with open("d:\\ziliao\\1216\\vibe-draw\\.cursor\\debug.log", "a", encoding="utf-8") as f:
+                    f.write(json_module.dumps(log_data3, ensure_ascii=False) + "\n")
+            except Exception:
+                pass
+            # #endregion
+            
+            response = await client.post(
+                f"{settings.API_302AI_BASE_URL}/302/submit/trellis",
+                headers={
+                    "Authorization": f"Bearer {settings.TRELLIS_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json=request_body
+            )
+            
+            # #region agent log
+            log_data4 = {
+                "sessionId": "debug-session",
+                "runId": "run1",
+                "hypothesisId": "C",
+                "location": "routes.py:call_302ai_trellis_api:http_response",
+                "message": "HTTP response received",
+                "data": {
+                    "status_code": response.status_code,
+                    "response_size": len(response.content) if hasattr(response, 'content') else 0
+                },
+                "timestamp": int(time.time() * 1000)
+            }
+            try:
+                with open("d:\\ziliao\\1216\\vibe-draw\\.cursor\\debug.log", "a", encoding="utf-8") as f:
+                    f.write(json_module.dumps(log_data4, ensure_ascii=False) + "\n")
+            except Exception:
+                pass
+            # #endregion
+            
+            response.raise_for_status()
+            return response.json()
+    except httpx.RequestError as e:
+        # #region agent log
+        log_data5 = {
+            "sessionId": "debug-session",
+            "runId": "run1",
+            "hypothesisId": "D",
+            "location": "routes.py:call_302ai_trellis_api:request_error",
+            "message": "HTTP request error",
+            "data": {
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "error_repr": repr(e)
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+        try:
+            with open("d:\\ziliao\\1216\\vibe-draw\\.cursor\\debug.log", "a", encoding="utf-8") as f:
+                f.write(json_module.dumps(log_data5, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+        # #endregion
+        raise
 
 async def get_task_result(task_id: str) -> Dict[str, Any]:
     """Get the result of a task from Redis or Celery."""
@@ -262,193 +489,228 @@ Do not wrap the code in a function or module. Do not import anything.
         }
     }
 
-@router.post("/trellis/task", response_model=Dict[str, Any])
-async def create_trellis_task(request_data: TrellisRequest):
-    """Create a task in the Trellis API for image-to-3D generation.
-    
-    This endpoint accepts the same format as the Trellis API create-task endpoint
-    (https://piapi.ai/docs/trellis-api/create-task), but the API key is provided by the backend.
+async def process_302ai_trellis_task(task_id: str, image_url: str, trellis_input: TrellisInput):
+    """Background task to process 302.ai Trellis API call and store result in Redis.
     
     Args:
-        request_data: The data to send to the Trellis API, matching their expected format.
+        task_id: Task ID for tracking
+        image_url: Image URL in data URL format
+        trellis_input: Trellis input parameters from the request
+    """
+    try:
+        # Publish start event
+        redis_service.publish_start_event(task_id)
+        
+        # Map parameters from frontend format to 302.ai format
+        # Frontend defaults: ss_sampling_steps=50, slat_sampling_steps=50
+        # 302.ai defaults: ss_sampling_steps=12, slat_sampling_steps=12
+        # Use frontend values if provided, otherwise use 302.ai defaults
+        ss_sampling_steps = trellis_input.ss_sampling_steps if trellis_input.ss_sampling_steps else 12
+        slat_sampling_steps = trellis_input.slat_sampling_steps if trellis_input.slat_sampling_steps else 12
+        
+        # Call 302.ai Trellis API
+        response = await call_302ai_trellis_api(
+            image_url=image_url,
+            ss_guidance_strength=trellis_input.ss_guidance_strength or 7.5,
+            ss_sampling_steps=ss_sampling_steps,
+            slat_guidance_strength=trellis_input.slat_guidance_strength or 3,
+            slat_sampling_steps=slat_sampling_steps,
+            mesh_simplify=0.95,  # 302.ai default
+            texture_size=1024    # 302.ai default
+        )
+        
+        # Extract model mesh URL from response
+        model_mesh_url = response.get("model_mesh", {}).get("url")
+        
+        if not model_mesh_url:
+            raise ValueError("No model_mesh.url in 302.ai response")
+        
+        # Prepare success response in format expected by frontend
+        result = {
+            "status": "completed",
+            "message": "Task completed successfully",
+            "data": model_mesh_url,
+            "full_response": response
+        }
+        
+        # Publish completion event and store result
+        redis_service.publish_complete_event(task_id, result)
+        redis_service.store_response(task_id, result)
+        
+    except httpx.HTTPStatusError as e:
+        # Handle HTTP errors from 302.ai API
+        error_detail = f"302.ai Trellis API error: {e.response.status_code}"
+        try:
+            error_json = e.response.json()
+            if "error" in error_json:
+                if isinstance(error_json["error"], dict) and "message" in error_json["error"]:
+                    error_detail = error_json["error"]["message"]
+                elif isinstance(error_json["error"], str):
+                    error_detail = error_json["error"]
+            elif "message" in error_json:
+                error_detail = error_json["message"]
+        except Exception:
+            pass
+        
+        error_response = {
+            "status": "error",
+            "error": error_detail,
+            "error_type": "HTTPStatusError",
+            "task_id": task_id
+        }
+        
+        try:
+            redis_service.publish_error_event(task_id, Exception(error_detail))
+            redis_service.store_response(task_id, error_response)
+        except Exception:
+            pass
+        
+    except httpx.RequestError as e:
+        # Handle network errors
+        error_response = {
+            "status": "error",
+            "error": f"Error connecting to 302.ai Trellis API: {str(e)}",
+            "error_type": "RequestError",
+            "task_id": task_id
+        }
+        
+        try:
+            redis_service.publish_error_event(task_id, e)
+            redis_service.store_response(task_id, error_response)
+        except Exception:
+            pass
+        
+    except Exception as e:
+        # Prepare error response
+        error_response = {
+            "status": "error",
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "task_id": task_id
+        }
+        
+        try:
+            redis_service.publish_error_event(task_id, e)
+            redis_service.store_response(task_id, error_response)
+        except Exception:
+            pass  # Ignore Redis errors at this point
+
+@router.post("/trellis/task", response_model=Dict[str, Any])
+async def create_trellis_task(request_data: TrellisRequest, background_tasks: BackgroundTasks):
+    """Create a task for 302.ai Trellis API image-to-3D generation.
+    
+    This endpoint accepts the same format as before for compatibility, but now uses 302.ai API.
+    
+    Args:
+        request_data: The data containing image and parameters
+        background_tasks: FastAPI background tasks for async processing
         
     Returns:
-        Dict[str, Any]: The response from the Trellis API, which includes the job ID.
+        Dict[str, Any]: Task ID and status for WebSocket tracking
     """
     # Check if API key is available
     if not settings.TRELLIS_API_KEY:
-        raise HTTPException(status_code=500, detail="Trellis API key not configured")
-        
-    # Set up the headers with our API key
-    headers = {
-        "x-api-key": settings.TRELLIS_API_KEY,
-        "Content-Type": "application/json"
+        raise HTTPException(status_code=500, detail="302.ai API key (TRELLIS_API_KEY) not configured")
+    
+    # Generate a task ID
+    task_id = str(uuid.uuid4())
+    
+    # Convert base64 image to data URL format
+    base64_image = request_data.input.image
+    image_url = convert_base64_to_data_url(base64_image)
+    
+    # Add background task to process the 302.ai API call
+    background_tasks.add_task(
+        process_302ai_trellis_task,
+        task_id=task_id,
+        image_url=image_url,
+        trellis_input=request_data.input
+    )
+    
+    # Return task ID in format compatible with frontend
+    return {
+        "code": 200,
+        "data": {
+            "task_id": task_id
+        },
+        "message": "Task submitted successfully"
     }
-    
-    # Convert Pydantic model to dict for the request
-    request_dict = request_data.dict(exclude_none=True)
-    
-    # Make the request to the Trellis API
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                TRELLIS_API_URL,
-                headers=headers,
-                json=request_dict,
-                timeout=30.0  # 30 second timeout
-            )
-            
-            # Check if the request was successful
-            response.raise_for_status()
-            
-            # Return the response from the Trellis API
-            return response.json()
-            
-        except httpx.HTTPStatusError as e:
-            # Handle HTTP errors
-            error_detail = f"Trellis API error: {e.response.status_code}"
-            try:
-                error_json = e.response.json()
-                if "detail" in error_json:
-                    error_detail = error_json["detail"]
-            except Exception:
-                pass
-            
-            raise HTTPException(status_code=e.response.status_code, detail=error_detail)
-            
-        except httpx.RequestError as e:
-            # Handle request errors (connection, timeout, etc.)
-            raise HTTPException(status_code=500, detail=f"Error connecting to Trellis API: {str(e)}")
 
 @router.websocket("/trellis/task/ws/{task_id}")
 async def trellis_task_status_websocket(websocket: WebSocket, task_id: str):
-    """WebSocket endpoint that polls the Trellis API for task status.
+    """WebSocket endpoint that monitors 302.ai Trellis task status from Redis.
     
     Args:
         websocket: The WebSocket connection
-        task_id: The ID of the task to poll
+        task_id: The ID of the task to monitor
         
     Returns:
         Streams the task status and result via WebSocket
     """
-    # Check if API key is available
-    if not settings.TRELLIS_API_KEY:
-        await websocket.close(code=1008, reason="Trellis API key not configured")
-        return
-        
     await websocket.accept()
-    
-    # Set up headers for Trellis API
-    headers = {
-        "x-api-key": settings.TRELLIS_API_KEY,
-        "Content-Type": "application/json"
-    }
     
     # Flag to control polling loop
     continue_polling = True
+    max_polling_time = 180  # Maximum polling time in seconds (3 minutes)
+    start_time = asyncio.get_event_loop().time()
     
     try:
         # Start polling loop
         while continue_polling:
             try:
-                # Poll the Trellis API for task status
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(
-                        f"{TRELLIS_API_URL}/{task_id}",
-                        headers=headers,
-                        timeout=10.0
-                    )
+                # Check if we've exceeded max polling time
+                elapsed_time = asyncio.get_event_loop().time() - start_time
+                if elapsed_time > max_polling_time:
+                    await websocket.send_json({
+                        "status": "error",
+                        "message": "Task timed out",
+                        "data": None
+                    })
+                    continue_polling = False
+                    break
+                
+                # Try to get the result from Redis
+                result = redis_service.get_response(task_id)
+                
+                if result:
+                    # Task has completed or failed
+                    status = result.get("status", "unknown")
                     
-                    # If the request was successful, process the response
-                    if response.status_code == 200:
-                        response_data = response.json()
-                        
-                        # Extract the status from the response data
-                        # Based on PiAPI's common format, status will be in data.status
-                        status = "processing"  # Default status
-                        
-                        if "code" in response_data and response_data["code"] == 200:
-                            # Format matches the unified API response
-                            if "data" in response_data and "status" in response_data["data"]:
-                                status = response_data["data"]["status"]
-                        elif "status" in response_data:
-                            # Direct status field in response
-                            status = response_data["status"]
-                        
-                        # Map the status to our expected values
-                        # Trellis API likely uses "completed", "processing", "failed" etc.
-                        is_completed = status.lower() in ["completed", "succeeded", "done"]
-                        is_failed = status.lower() in ["failed", "error"]
-                        
-                        # If task is complete, send the full result
-                        if is_completed:
-                            model_data = None
-                            
-                            # Look for the 3D model data
-                            if "data" in response_data and "output" in response_data["data"]:
-                                output = response_data["data"]["output"]
-                                if "model_file" in output:
-                                    model_data = output["model_file"]
-                            elif "output" in response_data and "model_file" in response_data["output"]:
-                                model_data = response_data["output"]["model_file"]
-                            
-                            await websocket.send_json({
-                                "status": "completed",
-                                "message": "Task completed successfully",
-                                "data": model_data,
-                                "full_response": response_data
-                            })
-                            continue_polling = False
-                        elif is_failed:
-                            # Task failed, get error message
-                            error_message = "Task processing failed"
-                            
-                            # Look for error message in different possible locations
-                            if "data" in response_data and "error" in response_data["data"]:
-                                error_data = response_data["data"]["error"]
-                                if isinstance(error_data, dict) and "message" in error_data:
-                                    error_message = error_data["message"]
-                                elif isinstance(error_data, str):
-                                    error_message = error_data
-                            elif "error" in response_data:
-                                error_data = response_data["error"]
-                                if isinstance(error_data, dict) and "message" in error_data:
-                                    error_message = error_data["message"]
-                                elif isinstance(error_data, str):
-                                    error_message = error_data
-                            
-                            await websocket.send_json({
-                                "status": "failed",
-                                "message": error_message,
-                                "data": None,
-                                "full_response": response_data
-                            })
-                            continue_polling = False
-                        else:
-                            # Task is still processing
-                            await websocket.send_json({
-                                "status": "processing",
-                                "message": f"Task is {status.lower()}, waiting for completion",
-                                "data": None
-                            })
-                    else:
-                        # If there was an error retrieving the task
-                        error_message = f"Error retrieving task status: {response.status_code}"
-                        try:
-                            error_data = response.json()
-                            if "message" in error_data:
-                                error_message = error_data["message"]
-                        except Exception:
-                            pass
-                        
+                    if status == "completed" or status == "success":
+                        # Task completed successfully
                         await websocket.send_json({
-                            "status": "error",
+                            "status": "completed",
+                            "message": result.get("message", "Task completed successfully"),
+                            "data": result.get("data"),  # This is the model_mesh.url
+                            "full_response": result.get("full_response")
+                        })
+                        continue_polling = False
+                    elif status == "error" or status == "failed":
+                        # Task failed
+                        error_message = result.get("error") or result.get("message", "Task processing failed")
+                        await websocket.send_json({
+                            "status": "failed",
                             "message": error_message,
+                            "data": None,
+                            "full_response": result
+                        })
+                        continue_polling = False
+                    else:
+                        # Still processing
+                        await websocket.send_json({
+                            "status": "processing",
+                            "message": f"Task is {status}, waiting for completion",
                             "data": None
                         })
+                else:
+                    # No result yet, task is still processing
+                    await websocket.send_json({
+                        "status": "processing",
+                        "message": "Task is being processed, please wait...",
+                        "data": None
+                    })
                 
                 # Check for messages from the client
-                # Use wait_for with a timeout to make this non-blocking
                 try:
                     # Wait for a message from the client with a timeout
                     client_message = await asyncio.wait_for(websocket.receive_text(), timeout=0.1)
@@ -464,11 +726,11 @@ async def trellis_task_status_websocket(websocket: WebSocket, task_id: str):
                 if continue_polling:
                     await asyncio.sleep(2)
                 
-            except httpx.RequestError as e:
-                # Handle request errors
+            except Exception as e:
+                # Handle errors during polling
                 await websocket.send_json({
                     "status": "error",
-                    "message": f"Error connecting to Trellis API: {str(e)}",
+                    "message": f"Error checking task status: {str(e)}",
                     "data": None
                 })
                 # Wait before retrying
