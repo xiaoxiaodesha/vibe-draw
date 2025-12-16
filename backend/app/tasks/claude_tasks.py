@@ -1,5 +1,5 @@
 import asyncio
-from anthropic import AsyncAnthropic
+import httpx
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.tasks.tasks import AsyncAITask, GenericPromptTask, DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE
@@ -9,20 +9,108 @@ from typing import Dict, Any, Optional, List, Union
 # Default model configuration for Claude
 DEFAULT_MODEL = "claude-3-7-sonnet-20250219"
 
-# Create Anthropic client for Claude 3.7
-async def get_anthropic_client() -> AsyncAnthropic:
-    client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-    return client
+def convert_to_openai_format(content: List[Dict[str, Any]]) -> List[Union[str, Dict[str, Any]]]:
+    """
+    Convert Anthropic message content format to OpenAI/302.ai format.
+    
+    Anthropic format:
+    [
+        {"type": "text", "text": "..."},
+        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "..."}}
+    ]
+    
+    OpenAI/302.ai format:
+    [
+        {"type": "text", "text": "..."},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}
+    ]
+    """
+    converted = []
+    for item in content:
+        if item.get("type") == "text":
+            converted.append({"type": "text", "text": item.get("text", "")})
+        elif item.get("type") == "image":
+            source = item.get("source", {})
+            if source.get("type") == "base64":
+                media_type = source.get("media_type", "image/png")
+                data = source.get("data", "")
+                # Convert to OpenAI format: data:image/png;base64,{data}
+                image_url = f"data:{media_type};base64,{data}"
+                converted.append({
+                    "type": "image_url",
+                    "image_url": {"url": image_url}
+                })
+    return converted
+
+async def call_302ai_api(
+    messages: List[Dict[str, Any]],
+    system_prompt: Optional[str] = None,
+    model: str = DEFAULT_MODEL,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
+    temperature: float = DEFAULT_TEMPERATURE,
+    additional_params: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Call 302.ai API using OpenAI-compatible Chat Completions endpoint.
+    
+    Args:
+        messages: List of messages in OpenAI format
+        system_prompt: System prompt (will be added as system message)
+        model: Model name
+        max_tokens: Maximum tokens to generate
+        temperature: Sampling temperature
+        additional_params: Additional parameters to pass to API
+        
+    Returns:
+        API response as dictionary
+    """
+    if not settings.ANTHROPIC_API_KEY:
+        raise ValueError("302.ai API key (ANTHROPIC_API_KEY) not configured")
+    
+    # Prepare messages list
+    api_messages = []
+    
+    # Add system prompt as system message if provided
+    if system_prompt:
+        api_messages.append({
+            "role": "system",
+            "content": system_prompt
+        })
+    
+    # Add user messages
+    api_messages.extend(messages)
+    
+    # Prepare request body
+    request_body = {
+        "model": model,
+        "messages": api_messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens
+    }
+    
+    # Add any additional parameters
+    if additional_params:
+        request_body.update(additional_params)
+    
+    # Make the API request
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        response = await client.post(
+            f"{settings.API_302AI_BASE_URL}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {settings.ANTHROPIC_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json=request_body
+        )
+        
+        # Check for HTTP errors
+        response.raise_for_status()
+        
+        return response.json()
 
 class AsyncClaudeTask(AsyncAITask):
     """Base class for Claude Celery tasks that use async functions."""
-    _client = None
-    
-    @property
-    async def client(self) -> AsyncAnthropic:
-        if self._client is None:
-            self._client = await get_anthropic_client()
-        return self._client
+    pass
 
 class ClaudePromptTask(GenericPromptTask, AsyncClaudeTask):
     """Task to generate 3D models from images using Claude 3.7."""
@@ -32,13 +120,10 @@ class ClaudePromptTask(GenericPromptTask, AsyncClaudeTask):
                          max_tokens: int = DEFAULT_MAX_TOKENS, 
                          temperature: float = DEFAULT_TEMPERATURE,
                          additional_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Process a 3D model generation request with Claude 3.7."""
+        """Process a 3D model generation request with Claude 3.7 via 302.ai."""
         try:
             # Publish start event
             redis_service.publish_start_event(task_id)
-            
-            # Get the Claude client
-            client = await self.client
             
             # Prepare the system prompt for 3D generation
             system_prompt = """You are an expert 3D modeler and Three.js developer who specializes in turning 2D drawings and wireframes into 3D models.
@@ -107,37 +192,43 @@ Return ONLY the JavaScript code that creates and animates the Three.js scene."""
                     "text": f"Here's a list of text that we found in the design:\n{prompt}"
                 })
             
-            # Prepare message parameters for Claude
-            message_params = {
-                "model": DEFAULT_MODEL,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-                "messages": [{
-                    "role": "user",
-                    "content": message_content
-                }],
-                "system": system_prompt
-            }
+            # Convert Anthropic format to OpenAI/302.ai format
+            converted_content = convert_to_openai_format(message_content)
             
-            # Add any additional parameters
-            if additional_params:
-                message_params.update(additional_params)
+            # Prepare messages for 302.ai API
+            messages = [{
+                "role": "user",
+                "content": converted_content
+            }]
             
-            # Send the request to Claude
-            response = await client.messages.create(**message_params)
+            # Call 302.ai API
+            response = await call_302ai_api(
+                messages=messages,
+                system_prompt=system_prompt,
+                model=DEFAULT_MODEL,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                additional_params=additional_params
+            )
             
-            # Extract content from the response
-            content = response.content[0].text
+            # Extract content from the response (OpenAI format)
+            content = response["choices"][0]["message"]["content"]
+            
+            # Extract usage information
+            usage = response.get("usage", {})
+            input_tokens = usage.get("prompt_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0)
+            total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
             
             # Prepare the final response
             final_response = {
                 "status": "success",
                 "content": content,
-                "model": response.model,
+                "model": response.get("model", DEFAULT_MODEL),
                 "usage": {
-                    "input_tokens": response.usage.input_tokens,
-                    "output_tokens": response.usage.output_tokens,
-                    "total_tokens": response.usage.input_tokens + response.usage.output_tokens
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "total_tokens": total_tokens
                 },
                 "task_id": task_id
             }
@@ -149,6 +240,31 @@ Return ONLY the JavaScript code that creates and animates the Three.js scene."""
             redis_service.store_response(task_id, final_response)
             
             return final_response
+            
+        except httpx.HTTPStatusError as e:
+            # Handle HTTP errors
+            error_detail = f"302.ai API error: {e.response.status_code}"
+            try:
+                error_json = e.response.json()
+                if "error" in error_json:
+                    error_detail = error_json["error"].get("message", error_detail)
+            except Exception:
+                pass
+            
+            error_response = {
+                "status": "error",
+                "error": error_detail,
+                "error_type": "HTTPStatusError",
+                "task_id": task_id
+            }
+            
+            try:
+                redis_service.publish_error_event(task_id, Exception(error_detail))
+                redis_service.store_response(task_id, error_response)
+            except Exception:
+                pass
+            
+            return error_response
             
         except Exception as e:
             # Prepare error response
@@ -200,7 +316,7 @@ class ClaudeEditTask(GenericPromptTask, AsyncClaudeTask):
                          max_tokens: int = DEFAULT_MAX_TOKENS, 
                          temperature: float = DEFAULT_TEMPERATURE,
                          additional_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Process a 3D model editing request with Claude 3.7."""
+        """Process a 3D model editing request with Claude 3.7 via 302.ai."""
         try:
             # Validate input parameters
             if not threejs_code:
@@ -211,9 +327,6 @@ class ClaudeEditTask(GenericPromptTask, AsyncClaudeTask):
             
             # Publish start event
             redis_service.publish_start_event(task_id)
-            
-            # Get the Claude client
-            client = await self.client
             
             # Prepare the system prompt for 3D code editing
             system_prompt = """You are an expert 3D modeler and Three.js developer who specializes in editing and enhancing Three.js code based on user input.
@@ -283,37 +396,43 @@ Return the COMPLETE JavaScript code for the modified Three.js scene."""
                     "text": f"Here are the specific changes requested:\n{prompt}"
                 })
             
-            # Prepare message parameters for Claude
-            message_params = {
-                "model": DEFAULT_MODEL,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-                "messages": [{
-                    "role": "user",
-                    "content": message_content
-                }],
-                "system": system_prompt
-            }
+            # Convert Anthropic format to OpenAI/302.ai format
+            converted_content = convert_to_openai_format(message_content)
             
-            # Add any additional parameters
-            if additional_params:
-                message_params.update(additional_params)
+            # Prepare messages for 302.ai API
+            messages = [{
+                "role": "user",
+                "content": converted_content
+            }]
             
-            # Send the request to Claude
-            response = await client.messages.create(**message_params)
+            # Call 302.ai API
+            response = await call_302ai_api(
+                messages=messages,
+                system_prompt=system_prompt,
+                model=DEFAULT_MODEL,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                additional_params=additional_params
+            )
             
-            # Extract content from the response
-            content = response.content[0].text
+            # Extract content from the response (OpenAI format)
+            content = response["choices"][0]["message"]["content"]
+            
+            # Extract usage information
+            usage = response.get("usage", {})
+            input_tokens = usage.get("prompt_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0)
+            total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
             
             # Prepare the final response
             final_response = {
                 "status": "success",
                 "content": content,
-                "model": response.model,
+                "model": response.get("model", DEFAULT_MODEL),
                 "usage": {
-                    "input_tokens": response.usage.input_tokens,
-                    "output_tokens": response.usage.output_tokens,
-                    "total_tokens": response.usage.input_tokens + response.usage.output_tokens
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "total_tokens": total_tokens
                 },
                 "task_id": task_id
             }
@@ -325,6 +444,31 @@ Return the COMPLETE JavaScript code for the modified Three.js scene."""
             redis_service.store_response(task_id, final_response)
             
             return final_response
+            
+        except httpx.HTTPStatusError as e:
+            # Handle HTTP errors
+            error_detail = f"302.ai API error: {e.response.status_code}"
+            try:
+                error_json = e.response.json()
+                if "error" in error_json:
+                    error_detail = error_json["error"].get("message", error_detail)
+            except Exception:
+                pass
+            
+            error_response = {
+                "status": "error",
+                "error": error_detail,
+                "error_type": "HTTPStatusError",
+                "task_id": task_id
+            }
+            
+            try:
+                redis_service.publish_error_event(task_id, Exception(error_detail))
+                redis_service.store_response(task_id, error_response)
+            except Exception:
+                pass
+            
+            return error_response
             
         except Exception as e:
             # Prepare error response

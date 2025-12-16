@@ -21,10 +21,14 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: str = Field(default=os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0"))
     
     # API keys
+    # Note: ANTHROPIC_API_KEY is now used for 302.ai API key
     ANTHROPIC_API_KEY: Optional[str] = Field(default=os.getenv("ANTHROPIC_API_KEY", None))
     GOOGLE_API_KEY: Optional[str] = Field(default=os.getenv("GOOGLE_API_KEY", None))
     CEREBRAS_API_KEY: Optional[str] = Field(default=os.getenv("CEREBRAS_API_KEY", None))
     TRELLIS_API_KEY: Optional[str] = Field(default=os.getenv("TRELLIS_API_KEY", None))
+    
+    # 302.ai API settings
+    API_302AI_BASE_URL: str = Field(default=os.getenv("API_302AI_BASE_URL", "https://api.302.ai"))
 
     
     class Config:
